@@ -3,6 +3,8 @@ import ApiError from '../utils/apiError.js';
 import { User } from '../models/user.model.js';
 import uploadToCloudinary from '../utils/cloudinaryUploader.js';
 import ApiResponse from '../utils/apiResponse.js';
+import jwt from "jsonwebtoken";
+import mongoose from 'mongoose';
 
 //function for generating tokens, will be used in login controller functionality
 const generateAccessAndRefreshTokens = async (userId) => {
@@ -151,8 +153,11 @@ const logoutUser = asyncHandler(async (req, res) => {
         req.user._id,
         //clearing refresh token from db
         {
-            $set: { refreshToken: undefined }
+            $unset: { refreshToken: 1 }
         },
+        { 
+            returnDocument: "after" //this will return the updated document instead of the original document
+        }
     )
 
     //clearing cookies
@@ -178,13 +183,13 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     }
 
     try {
-        const decodedToken = jwt.verify(refreshToken, process.env.JWT_REFRESH_TOKEN_SECRET_KEY);
+        const decodedToken = jwt.verify(incomingRefreshToken, process.env.JWT_REFRESH_TOKEN_SECRET_KEY);
 
         if (!decodedToken) {
             throw new ApiError(401, "Invalid refresh token");
         }
 
-        const user = await User.findById(decodedToken?.id).select('-password -refreshToken');
+        const user = await User.findById(decodedToken?.id).select('-password');
 
         if (!user) {
             throw new ApiError(401, "User not found");
@@ -248,7 +253,7 @@ const updateUser = asyncHandler(async (req, res) => {
                 fullName, email
             }
         },
-        { new: true }
+        { returnDocument: "after" } //this will return the updated document instead of the original document
     ).select('-password -refreshToken');
 
     return res.status(200).json(
@@ -276,7 +281,7 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
         {
             $set: { avatar: avatar.url }
         },
-        { new: true }
+        { returnDocument: "after" } //this will return the updated document instead of the original document
     ).select('-password -refreshToken');
 
     return res.status(200).json(
@@ -304,13 +309,126 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
         {
             $set: { coverImage: coverImage.url }
         },
-        { new: true }
+        { returnDocument: "after" } //this will return the updated document instead of the original document
     ).select('-password -refreshToken');
 
     return res.status(200).json(
         new ApiResponse(
             200, user, "User Cover Image updated successfully"
         ));
+});
+
+const getUserChannelProfile = asyncHandler(async (req, res) => {
+
+    const { username } = req.params;
+
+    if (!username) {
+        throw new ApiError(404, "User not found");
+    }
+
+    const channel = await User.aggregate([
+        {
+            $match: {
+                username: username?.toLowerCase()
+            }
+        },
+        {
+            $lookup: {
+                from: 'subscriptions',
+                localField: '_id',
+                foreignField: 'channel',
+                as: 'subscribers'
+            }
+        },
+        {
+            $lookup: {
+                from: 'subscriptions',
+                localField: '_id',
+                foreignField: 'subscriber',
+                as: 'subscribedTo'
+            }
+        },
+        {
+            $addFields: {
+                totalSubscribers: {
+                     $size: '$subscribers'
+                    },
+                totalSubscribedTo: {
+                    $size: '$subscribedTo'
+                },
+                isSubscribed: {
+                    $in: [req.user._id, '$subscribers.subscriber']
+                }
+            }
+        },
+        {
+            $project: {
+                username: 1,
+                fullName: 1,
+                email: 1,
+                avatar: 1,
+                coverImage: 1,
+                totalSubscribers: 1,
+                totalSubscribedTo: 1,
+                isSubscribed: 1
+            }
+        }
+    ])
+
+    if(!channel) {
+        throw new ApiError(404, "Channel does not exist");
+    }
+
+    return res.status(200).json(new ApiResponse(200, channel, "User channel profile fetched successfully"));
+});
+
+const getWatchHistory = asyncHandler(async (req, res) => {
+
+    // req.user._id (this returns a string not the mongodb object id but mongoose behind the scenes converts it to object id when we use findById/find/findOne etc)
+
+    const watchHistory = await User.aggregate([
+        {
+            $match: {
+                 //Aggregation pipelines runs directly in MongoDB, so MongoDB expects an ObjectId.
+                 //Therefore, we manually convert the string to ObjectId.
+                _id: new mongoose.Types.ObjectId(req.user._id)
+            }
+        },
+        {
+            $lookup: {
+                from: 'videos',
+                localField: 'watchHistory',
+                foreignField: '_id',
+                as: 'watchHistory',
+                pipeline: [
+                    {
+                        $lookup: {
+                            from: 'users',
+                            localField: 'owner',
+                            foreignField: '_id',
+                            as: 'owner',
+                            pipeline: [
+                                {
+                                    $project: {
+                                        username: 1,
+                                        fullName: 1,
+                                        avatar: 1,
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            $project: {
+                watchHistory: 1,
+            }
+        }
+    ])
+
+    return res.status(200).json(new ApiResponse(200, watchHistory, "Watch history fetched successfully"));
 });
 
 export {
@@ -322,5 +440,7 @@ export {
     getCurrentUser,
     updateUser,
     updateUserAvatar,
-    updateUserCoverImage
+    updateUserCoverImage,
+    getUserChannelProfile,
+    getWatchHistory
 };

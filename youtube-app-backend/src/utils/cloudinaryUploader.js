@@ -9,11 +9,12 @@ cloudinary.config({
 
 // cloudinaryUploader is a function that uploads a file to cloudinary
 // it takes a local file path as an argument and returns a response from cloudinary
-const cloudinaryUploader = async (localFilePath) => {
+const cloudinaryUploader = async (localFilePath, options = {}) => {
     try {
         if (!localFilePath) return null;
         const response = await cloudinary.uploader.upload(localFilePath, {
             resource_type: 'auto',
+            ...options,
         });
         fs.unlinkSync(localFilePath);
         return response;

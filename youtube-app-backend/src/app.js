@@ -19,9 +19,11 @@ app.use(express.static('public')); // express.static is used to serve the static
 
 //routes imports
 import userRouter from './routes/user.route.js';
+import videoRouter from './routes/video.route.js';
 
 //routes middleware
 app.use('/api/v1/users', userRouter);
+app.use('/api/v1/videos', videoRouter);
 
 
 export default app;
