@@ -22,12 +22,14 @@ import userRouter from './routes/user.route.js';
 import videoRouter from './routes/video.route.js';
 import likesRouter from './routes/likes.route.js';
 import commentRouter from './routes/comment.route.js';
+import playlistRouter from './routes/playlist.route.js';
 
 //routes middleware
 app.use('/api/v1/users', userRouter);
 app.use('/api/v1/videos', videoRouter);
 app.use('/api/v1/likes', likesRouter);
 app.use('/api/v1/comments', commentRouter);
+app.use('/api/v1/playlists', playlistRouter);
 
 
 export default app;
