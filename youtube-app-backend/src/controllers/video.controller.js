@@ -137,9 +137,70 @@ const getVideoById = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Invalid video id");
     }
 
-    const video = await Video.findById(videoId);
+    const userObjectId = req.user?._id
+        ? new mongoose.Types.ObjectId(String(req.user._id))
+        : null;
 
-    if (!video) {
+    const isLikedExpression = userObjectId
+        ? {
+              $cond: {
+                  if: { $in: [userObjectId, "$likes.likedBy"] },
+                  then: true,
+                  else: false,
+              },
+          }
+        : false;
+
+    const video = await Video.aggregate([
+        {
+            $match: {
+                _id: new mongoose.Types.ObjectId(videoId),
+            },
+        },
+        {
+            $lookup: {
+                from: "likes",
+                localField: "_id",
+                foreignField: "video",
+                as: "likes",
+            },
+        },
+        {
+            $lookup: {
+                from: "users",
+                localField: "owner",
+                foreignField: "_id",
+                as: "owner",
+                pipeline: [
+                    {
+                        $project: {
+                            userName: 1,
+                            fullName: 1,
+                            avatar: 1,
+                        },
+                    },
+                ],
+            },
+        },
+        {
+            $addFields: {
+                likesCount: {
+                    $size: "$likes",
+                },
+                owner: {
+                    $first: "$owner",
+                },
+                isLiked: isLikedExpression,
+            },
+        },
+        {
+            $project: {
+                likes: 0,
+            },
+        },
+    ]);
+
+    if (!video?.length) {
         throw new ApiError(404, "Video not found");
     }
 
@@ -147,14 +208,9 @@ const getVideoById = asyncHandler(async (req, res) => {
         $inc: { views: 1 }, //inc means increment the views by 1 (inc is aggregate pipeline operator)
     });
 
-    const videoDetails = await Video.findById(videoId).populate(
-        "owner",
-        "username fullName avatar"
-    );
-
     return res
         .status(200)
-        .json(new ApiResponse(200, videoDetails, "Video fetched successfully"));
+        .json(new ApiResponse(200, video[0], "Video fetched successfully"));
 });
 
 const updateVideo = asyncHandler(async (req, res) => {

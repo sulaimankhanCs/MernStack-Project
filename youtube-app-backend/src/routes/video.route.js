@@ -7,7 +7,7 @@ import {
     deleteVideo,
 } from "../controllers/video.controller.js";
 import { upload } from "../middlewares/multer.middleware.js";
-import { verifyJWT } from "../middlewares/auth.middleware.js";
+import { verifyJWT, verifyJWTOptional } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
@@ -28,7 +28,7 @@ router.route("/upload-video").post(
     uploadVideo
 );
 
-router.get("/:videoId", getVideoById);
+router.get("/:videoId", verifyJWTOptional, getVideoById);
 router.delete("/:videoId", verifyJWT, deleteVideo);
 router.patch("/:videoId", verifyJWT, upload.single("thumbnail"), updateVideo);
 
